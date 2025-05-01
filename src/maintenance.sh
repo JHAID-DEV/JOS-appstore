@@ -62,7 +62,7 @@ EOF
 }
 
 main() {
-    cd "$SCRIPT_DIR"
+    cd "$(dirname "$SCRIPT_DIR")"
 
     commit="$(_git rev-parse HEAD)"
 
