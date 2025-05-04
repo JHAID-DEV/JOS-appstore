@@ -1,43 +1,40 @@
 #!/usr/bin/env python3
 
+import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
-from .utils import DATA_DIR, PROJECT_ROOT, file_autoreload
+from .utils import DATA_DIR, PROJECT_ROOT
 
-STARS_DIR = DATA_DIR / "stars"
+STARS_FILE = DATA_DIR / "stars.json"
 
 
 class AppstoreStars:
     def __init__(self) -> None:
         self.stars: dict[str, set[int]] = {}
-        STARS_DIR.mkdir(exist_ok=True)
+        if not STARS_FILE.exists():
+            json.dump({}, STARS_FILE.open("w"))
 
     def add(self, app: str, user: int) -> None:
-        self.stars.get(app, set()).add(user)
-        self.save(app)
+        if not app in self.stars:
+            self.stars[app] = set()
+        self.stars[app].add(user)
+        self.save()
 
     def remove(self, app: str, user: int) -> None:
         self.stars.get(app, set()).remove(user)
-        self.save(app)
+        self.save()
 
-    def save(self, app: str) -> None:
-        app_file = STARS_DIR / app
-        app_file.write_text("\n".join(str(user) for user in self.stars[app]))
-
-    def save_all(self) -> None:
-        for app in self.stars.keys():
-            self.save(app)
+    def save(self) -> None:
+        data = {app: list(users) for app, users in self.stars.items()}
+        json.dump(data, STARS_FILE.open("w"))
 
     def read(self) -> None:
-        for file in STARS_DIR.iterdir():
-            if file.name.startswith("."):
-                continue
-            self.stars[file.name] = set(
-                int(line.strip()) for line in file.read_text().strip().splitlines()
-            )
+        self.read_legacy()
+        data = json.load(STARS_FILE.open("r"))
+        self.stars = {app: set(users) for app, users in data.items()}
+        return
 
     def read_legacy(self) -> None:
         legacy_stars_dir = PROJECT_ROOT / ".stars"
@@ -53,5 +50,5 @@ class AppstoreStars:
 
         self.stars = stars
 
-        self.save_all()
+        self.save()
         shutil.rmtree(legacy_stars_dir)
