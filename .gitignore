@@ -7,3 +7,6 @@ data/cache
 __pycache__
 venv
 .venv
+.python-version
+
+*.log
