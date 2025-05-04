@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import shutil
 import json
 import os
 import time
@@ -20,6 +21,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 CATALOG_PATH = DATA_DIR / "apps.json"
 WISHLIST_PATH = DATA_DIR / "apps_repo" / "wishlist.toml"
 DASHBOARD_PATH = DATA_DIR / "dashboard.json"
+WISHLIST_RATELIMIT_PATH = DATA_DIR / "wishlist_ratelimit.json"
 
 AVAILABLE_LANGUAGES = [
     "en",
@@ -40,7 +42,7 @@ class FileAutoReload:
         self.last_mtime = 0
         self.cache: Any = None
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> Any:
         if self.file.stat().st_mtime != self.last_mtime:
             self.last_mtime = self.file.stat().st_mtime
             self.cache = self.function(*args, **kwargs)
@@ -52,7 +54,7 @@ def file_autoreload(file: Path) -> Callable[[Callable], FileAutoReload]:
 
 
 @file_autoreload(CATALOG_PATH)
-def get_catalog():
+def get_catalog() -> dict[str, Any]:
     catalog = json.load(CATALOG_PATH.open("r"))
     catalog["categories"] = {c["id"]: c for c in catalog["categories"]}
     catalog["antifeatures"] = {c["id"]: c for c in catalog["antifeatures"]}
@@ -81,12 +83,12 @@ def get_catalog():
 
 
 @file_autoreload(WISHLIST_PATH)
-def get_wishlist():
+def get_wishlist() -> dict[str, Any]:
     return toml.load(WISHLIST_PATH.open("r"))
 
 
 @file_autoreload(DASHBOARD_PATH)
-def get_dashboard_data():
+def get_dashboard_data() -> dict[str, Any]:
     return json.load(DASHBOARD_PATH.open("r"))
 
 
@@ -97,28 +99,51 @@ get_wishlist()
 # get_dashboard_data()
 
 
-def check_wishlist_submit_ratelimit(user):
+class WishlistRateLimit:
+    def __init__(self) -> None:
+        self.data: dict[str, int] = {}
+        if not WISHLIST_RATELIMIT_PATH.exists():
+            WISHLIST_RATELIMIT_PATH.write_text("{}")
+        self.read()
+        # 15 days ago
+        self.limit = 3600 * 24 * 15
 
-    dir_ = os.path.join(".wishlist_ratelimit")
-    if not os.path.exists(dir_):
-        os.mkdir(dir_)
+    def _digest(self, user: str) -> str:
+        return md5(user.encode()).hexdigest()
 
-    f = os.path.join(dir_, md5(user.encode()).hexdigest())
+    def add(self, user: str) -> None:
+        self.data[self._digest(user)] = int(time.time())
+        self.save()
 
-    return not os.path.exists(f) or (time.time() - os.path.getmtime(f)) > (
-        15 * 24 * 3600
-    )  # 15 days
+    def check(self, user: str) -> bool:
+        return self.data.get(self._digest(user), 0) > time.time() - self.limit
 
+    def save(self) -> None:
+        self.prune()
+        json.dump(self.data, WISHLIST_RATELIMIT_PATH.open("w"))
 
-def save_wishlist_submit_for_ratelimit(user):
+    def read(self) -> None:
+        self.read_legacy()
+        self.data = json.load(WISHLIST_RATELIMIT_PATH.open("r"))
+        self.prune()
 
-    dir_ = os.path.join(".wishlist_ratelimit")
-    if not os.path.exists(dir_):
-        os.mkdir(dir_)
+    def prune(self) -> None:
+        for key, value in self.data.items():
+            if value > time.time() - self.limit:
+                del self.data[key]
 
-    f = os.path.join(dir_, md5(user.encode()).hexdigest())
+    def read_legacy(self) -> None:
+        legacy_dir = PROJECT_ROOT / ".wishlist_ratelimit"
+        if not legacy_dir.exists():
+            return
+        data = {}
+        for file in legacy_dir.iterdir():
+            if file.is_file():
+                data[file.name] = file.stat().st_mtime
 
-    open(f, "w").write("")
+        self.data = data
+        self.save()
+        shutil.rmtree(legacy_dir)
 
 
 def human_to_binary(size: str) -> int:
