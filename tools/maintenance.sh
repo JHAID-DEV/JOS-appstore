@@ -57,7 +57,7 @@ fetch_catalog_and_level_history() {
 set_cron() {
     cat <<EOF > /etc/cron.d/appstore
 # Every 2 hours
-0 */2 * * * root $SCRIPT_DIR/maintenance.sh
+0 */2 * * * root $SCRIPT_DIR/tools/maintenance.sh
 EOF
 }
 
