@@ -3,7 +3,7 @@ name = "appstore"
 version = "0.1.0"
 description = "Yunohost Appstore"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "babel==2.14",
     "emoji==2.*",
